@@ -1,0 +1,22 @@
+# .gitignore
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtualenv
+venv/
+env/
+
+# Docker
+*.log
+docker-compose.override.yml
+.docker/
+
+# Pytest
+.cache/
+*.cover
+
+# VSCode
+.vscode/
