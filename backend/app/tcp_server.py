@@ -2,18 +2,20 @@ import asyncio
 import logging
 from logging.handlers import RotatingFileHandler
 
+from data_parser import process_umb_data
+
 # 配置日志系统
-log_handler = RotatingFileHandler("data/tcp_server.log", maxBytes=5*1024*1024, backupCount=5)
+log_handler = RotatingFileHandler("../data/tcp_server.log", maxBytes=5*1024*1024, backupCount=5)
 log_handler.setFormatter(logging.Formatter("%(asctime)s - %(levelname)s - %(message)s"))
 
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.WARNING,
     handlers=[log_handler]
 )
 
-# 定义超时时间，假设客户端每5分钟发送一次数据，设置为6分钟的超时时间
-DATA_TIMEOUT = 360  # 6分钟没有数据则关闭连接
+DATA_TIMEOUT = 360  # 超时设置为6分钟
 
+# 处理客户端连接
 async def handle_sensor_data(reader, writer):
     client_ip, client_port = writer.get_extra_info('peername')
     logging.info(f"Received connection from {client_ip}:{client_port}")
@@ -21,22 +23,20 @@ async def handle_sensor_data(reader, writer):
     try:
         while True:
             try:
-                # 等待客户端发送数据，超时设定为DATA_TIMEOUT
+                # 接收原始字节数据，设置超时时间
                 data = await asyncio.wait_for(reader.read(100), timeout=DATA_TIMEOUT)
                 if not data:
                     logging.info(f"Connection closed by {client_ip}")
                     break
 
-                message = data.decode().strip()
-                logging.info(f"Received TCP data from {client_ip}: {message}")
-                # process_sensor_data(message)
-
+                byte_list =  ['{:02x}'.format(byte) for byte in data]
+                vice_id, parsed_data = process_umb_data(" ".join(byte_list))
+                logging.info(f"Device ID :{vice_id},data:{parsed_data}")
                 # 发送确认消息给客户端
-                writer.write(b"Data received")
+                writer.write(b"Data received")  # 发送字节类型的响应
                 await writer.drain()
 
             except asyncio.TimeoutError:
-                # 超时则关闭连接
                 logging.warning(f"Connection from {client_ip} timed out after {DATA_TIMEOUT / 60} minutes of inactivity.")
                 break
 
@@ -52,7 +52,7 @@ async def handle_sensor_data(reader, writer):
 async def start_tcp_server():
     try:
         server = await asyncio.start_server(handle_sensor_data, '0.0.0.0', 18120)
-        logging.info("TCP server started on port 8888")
+        logging.info("TCP server started on port 18120")
         async with server:
             await server.serve_forever()
     except Exception as e:
