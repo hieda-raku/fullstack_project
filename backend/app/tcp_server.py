@@ -9,7 +9,7 @@ log_handler = RotatingFileHandler("../data/tcp_server.log", maxBytes=5*1024*1024
 log_handler.setFormatter(logging.Formatter("%(asctime)s - %(levelname)s - %(message)s"))
 
 logging.basicConfig(
-    level=logging.WARNING,
+    level=logging.INFO,
     handlers=[log_handler]
 )
 
@@ -18,7 +18,14 @@ DATA_TIMEOUT = 360  # 超时设置为6分钟
 # 处理客户端连接
 async def handle_sensor_data(reader, writer):
     client_ip, client_port = writer.get_extra_info('peername')
-    logging.info(f"Received connection from {client_ip}:{client_port}")
+    # 读取128字节的注册包
+    registration_packet = await reader.read(128)
+    # 解析注册包内容
+    station_id = registration_packet[:6].decode("utf-8")
+    protocol_type = registration_packet[6:].decode("utf-8").strip()  # 去除可能的额外空白字符
+
+    print(f"连接来自 {client_ip}:{client_port}, Station ID: {station_id}, Protocol: {protocol_type}")
+
 
     try:
         while True:
