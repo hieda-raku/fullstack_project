@@ -24,8 +24,7 @@ async def handle_sensor_data(reader, writer):
     station_id = registration_packet[:6].decode("utf-8")
     protocol_type = registration_packet[6:].decode("utf-8").strip()  # 去除可能的额外空白字符
 
-    print(f"连接来自 {client_ip}:{client_port}, Station ID: {station_id}, Protocol: {protocol_type}")
-
+    logging.info(f"连接来自 {client_ip}:{client_port}, Station ID: {station_id}, Protocol: {protocol_type}")
 
     try:
         while True:
