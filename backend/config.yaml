@@ -1,0 +1,29 @@
+road_condition_mapping:
+  10: 33  # 干
+  15: 34  # 潮
+  20: 34  # 湿
+  25: 34  # 潮
+  30: 34  # 湿
+  35: 35  # 冰
+  40: 35  # 雪
+  45: 40  # 霜
+
+channel_to_field:
+  7:
+    100: "air_temperature"
+    110: "dewpoint_temperature"
+    200: "humidity"
+    300: "atmospheric_pressure"
+    401: "wind_speed"
+    501: "wind_direction"
+    620: "absolute_precipitation"
+    625: "relative_precipitation"
+    820: "rainfall_intensity"
+  9:
+    101: "road_surface_temperature"
+    151: "freezing_point"
+    601: "water_film_height"
+    801: "saline_concentration"
+    810: "ice_percentage"
+    820: "friction"
+    900: "road_condition"

@@ -1,10 +1,11 @@
+# tcp_server.py - TCP Data Receiver Module
 import asyncio
 import logging
 from logging.handlers import RotatingFileHandler
-
 from data_parser import process_umb_data
+from database import store_sensor_data
 
-# 配置日志系统
+# Configure logging
 log_handler = RotatingFileHandler("./data/tcp_server.log", maxBytes=5*1024*1024, backupCount=5)
 log_handler.setFormatter(logging.Formatter("%(asctime)s - %(levelname)s - %(message)s"))
 
@@ -13,42 +14,39 @@ logging.basicConfig(
     handlers=[log_handler]
 )
 
-DATA_TIMEOUT = 360  # 超时设置为6分钟
+DATA_TIMEOUT = 360  # Timeout set to 6 minutes
 
-# 解析注册包
-def parse_registration_packet(registration_packet):
-    if len(registration_packet) < 128:
-        logging.error("Registration packet too short, ignoring connection.")
-        return None, None
-    station_id = registration_packet[:6].decode("utf-8", errors="ignore")
-    protocol_type = registration_packet[6:].decode("utf-8", errors="ignore").strip()
-    return station_id, protocol_type
-
-# 使用分离的函数
+# Handle client connection
 async def handle_sensor_data(reader, writer):
     client_ip, client_port = writer.get_extra_info('peername')
     registration_packet = await reader.read(128)
-    station_id, protocol_type = parse_registration_packet(registration_packet)
+    station_id, protocol_type = registration_packet[:6].decode("utf-8", errors="ignore"), registration_packet[6:].decode("utf-8", errors="ignore").strip()
+    
     if not station_id or not protocol_type:
         writer.close()
         await writer.wait_closed()
         return
-    logging.info(f"连接来自 {client_ip}:{client_port}, Station ID: {station_id}, Protocol: {protocol_type}")
+    
+    logging.info(f"Connection from {client_ip}:{client_port}, Station ID: {station_id}, Protocol: {protocol_type}")
 
     try:
         while True:
             try:
-                # 接收原始字节数据，设置超时时间
+                # Receive raw data with a timeout
                 data = await asyncio.wait_for(reader.read(100), timeout=DATA_TIMEOUT)
                 if not data:
                     logging.info(f"Connection closed by {client_ip}")
                     break
 
-                byte_list =  ['{:02x}'.format(byte) for byte in data]
+                byte_list = ['{:02x}'.format(byte) for byte in data]
                 vice_id, parsed_data = process_umb_data(" ".join(byte_list))
-                logging.info(f"Device ID :{vice_id},data:{parsed_data}")
-                # 发送确认消息给客户端
-                writer.write(b"Data received")  # 发送字节类型的响应
+                logging.info(f"Device ID: {vice_id}, data: {parsed_data}")
+
+                # Store parsed data into database
+                store_sensor_data(station_id, vice_id, parsed_data)
+
+                # Send acknowledgment to client
+                writer.write(b"Data received")
                 await writer.drain()
 
             except asyncio.TimeoutError:
@@ -63,7 +61,7 @@ async def handle_sensor_data(reader, writer):
         await writer.wait_closed()
         logging.info(f"Connection with {client_ip} closed.")
 
-# 启动TCP服务器
+# Start TCP Server
 async def start_tcp_server():
     try:
         server = await asyncio.start_server(handle_sensor_data, '0.0.0.0', 18120)
