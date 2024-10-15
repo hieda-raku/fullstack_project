@@ -15,15 +15,24 @@ logging.basicConfig(
 
 DATA_TIMEOUT = 360  # 超时设置为6分钟
 
-# 处理客户端连接
+# 解析注册包
+def parse_registration_packet(registration_packet):
+    if len(registration_packet) < 128:
+        logging.error("Registration packet too short, ignoring connection.")
+        return None, None
+    station_id = registration_packet[:6].decode("utf-8", errors="ignore")
+    protocol_type = registration_packet[6:].decode("utf-8", errors="ignore").strip()
+    return station_id, protocol_type
+
+# 使用分离的函数
 async def handle_sensor_data(reader, writer):
     client_ip, client_port = writer.get_extra_info('peername')
-    # 读取128字节的注册包
     registration_packet = await reader.read(128)
-    # 解析注册包内容
-    station_id = registration_packet[:6].decode("utf-8")
-    protocol_type = registration_packet[6:].decode("utf-8").strip()  # 去除可能的额外空白字符
-
+    station_id, protocol_type = parse_registration_packet(registration_packet)
+    if not station_id or not protocol_type:
+        writer.close()
+        await writer.wait_closed()
+        return
     logging.info(f"连接来自 {client_ip}:{client_port}, Station ID: {station_id}, Protocol: {protocol_type}")
 
     try:
