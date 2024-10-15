@@ -5,7 +5,7 @@ from logging.handlers import RotatingFileHandler
 from data_parser import process_umb_data
 
 # 配置日志系统
-log_handler = RotatingFileHandler("../data/tcp_server.log", maxBytes=5*1024*1024, backupCount=5)
+log_handler = RotatingFileHandler("./data/tcp_server.log", maxBytes=5*1024*1024, backupCount=5)
 log_handler.setFormatter(logging.Formatter("%(asctime)s - %(levelname)s - %(message)s"))
 
 logging.basicConfig(
