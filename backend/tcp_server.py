@@ -39,14 +39,19 @@ def validate_crc(data):
 async def handle_sensor_data(reader, writer):
     client_ip, client_port = writer.get_extra_info('peername')
     registration_packet = await reader.read(128)
-    station_id, protocol_type = registration_packet[:6].decode("utf-8", errors="ignore"), registration_packet[6:].decode("utf-8", errors="ignore").strip()
+    project_code = registration_packet[:2].decode("utf-8", errors="ignore")
+    station_code = registration_packet[2:4].decode("utf-8", errors="ignore")
+    station_number = registration_packet[4:7].decode("utf-8", errors="ignore")
+    protocol_type = registration_packet[7:].decode("utf-8", errors="ignore").strip()
+    
+    station_id = f"{project_code}{station_code}{station_number}"
     
     if not station_id or not protocol_type:
         writer.close()
         await writer.wait_closed()
         return
     
-    logging.info(f"连接来自 {client_ip}:{client_port}, Station ID: {station_id}, Protocol: {protocol_type}")
+    logging.info(f"connection form {client_ip}:{client_port}, Project Code: {project_code}, Station Code: {station_code}, Station Number: {station_number}, Protocol: {protocol_type}")
 
     try:
         while True:
@@ -65,10 +70,6 @@ async def handle_sensor_data(reader, writer):
                         logging.info(f"Device ID: {vice_id}, data: {parsed_data}")
                     else:
                         logging.warning(f"CRC validation failed for data from {client_ip}")
-
-                # 发送确认消息给客户端
-                writer.write(b"Data received")
-                await writer.drain()
 
             except asyncio.TimeoutError:
                 logging.warning(f"Connection from {client_ip} timed out after {DATA_TIMEOUT / 60} minutes of inactivity.")
@@ -94,4 +95,3 @@ async def start_tcp_server():
 
 if __name__ == "__main__":
     asyncio.run(start_tcp_server())
-
