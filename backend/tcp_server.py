@@ -3,6 +3,7 @@ import asyncio
 import logging
 from logging.handlers import RotatingFileHandler
 from data_parser import process_umb_data
+from crc_checksum import CRC16
 
 # 配置日志系统
 log_handler = RotatingFileHandler("./data/tcp_server.log", maxBytes=5*1024*1024, backupCount=5)
@@ -13,7 +14,26 @@ logging.basicConfig(
     handlers=[log_handler]
 )
 
-DATA_TIMEOUT = 360  # Timeout set to 6 minutes
+DATA_TIMEOUT = 360  # 超时设置为6分钟
+
+# 验证数据的CRC效验和
+def validate_crc(data):
+    """验证数据的CRC效验和。
+
+    参数:
+        data (bytes): 需要验证的数据。
+
+    返回:
+        bool: 如果CRC效验成功返回True，否则返回False。
+    """
+    # 提取CRC效验和
+    received_crc = data[-3:-1]
+
+    # 计算数据的CRC效验和
+    calculated_crc = CRC16.calc_crc16(data[:-3]).to_bytes(2, byteorder="little")
+
+    # 比较计算出的效验和与接收到的效验和
+    return received_crc == calculated_crc
 
 # 处理客户端连接
 async def handle_sensor_data(reader, writer):
@@ -26,7 +46,7 @@ async def handle_sensor_data(reader, writer):
         await writer.wait_closed()
         return
     
-    logging.info(f"Connection from {client_ip}:{client_port}, Station ID: {station_id}, Protocol: {protocol_type}")
+    logging.info(f"连接来自 {client_ip}:{client_port}, Station ID: {station_id}, Protocol: {protocol_type}")
 
     try:
         while True:
@@ -37,9 +57,14 @@ async def handle_sensor_data(reader, writer):
                     logging.info(f"Connection closed by {client_ip}")
                     break
 
-                byte_list = ['{:02x}'.format(byte) for byte in data]
-                vice_id, parsed_data = process_umb_data(" ".join(byte_list))
-                logging.info(f"Device ID: {vice_id}, data: {parsed_data}")
+                if protocol_type == "UMB":
+                    # CRC 校验
+                    if validate_crc(data):
+                        byte_list = ['{:02x}'.format(byte) for byte in data]
+                        vice_id, parsed_data = process_umb_data(" ".join(byte_list))
+                        logging.info(f"Device ID: {vice_id}, data: {parsed_data}")
+                    else:
+                        logging.warning(f"CRC validation failed for data from {client_ip}")
 
                 # 发送确认消息给客户端
                 writer.write(b"Data received")
@@ -69,3 +94,4 @@ async def start_tcp_server():
 
 if __name__ == "__main__":
     asyncio.run(start_tcp_server())
+
