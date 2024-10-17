@@ -4,6 +4,7 @@ import logging
 from logging.handlers import RotatingFileHandler
 from data_parser import process_umb_data
 from crc_checksum import CRC16
+import json
 
 # 配置日志系统
 log_handler = RotatingFileHandler("./data/tcp_server.log", maxBytes=5*1024*1024, backupCount=5)
@@ -51,13 +52,13 @@ async def handle_sensor_data(reader, writer):
         await writer.wait_closed()
         return
     
-    logging.info(f"connection form {client_ip}:{client_port}, Project Code: {project_code}, Station Code: {station_code}, Station Number: {station_number}, Protocol: {protocol_type}")
+    logging.info(f"连接来自 {client_ip}:{client_port}, Project Code: {project_code}, Station Code: {station_code}, Station Number: {station_number}, Protocol: {protocol_type}")
 
     try:
         while True:
             try:
                 # 接收原始字节数据，设置超时时间
-                data = await asyncio.wait_for(reader.read(100), timeout=DATA_TIMEOUT)
+                data = await asyncio.wait_for(reader.read(1024), timeout=DATA_TIMEOUT)
                 if not data:
                     logging.info(f"Connection closed by {client_ip}")
                     break
@@ -70,6 +71,16 @@ async def handle_sensor_data(reader, writer):
                         logging.info(f"Device ID: {vice_id}, data: {parsed_data}")
                     else:
                         logging.warning(f"CRC validation failed for data from {client_ip}")
+                elif protocol_type == "JSON":
+                    # 处理 JSON 数据
+                    try:
+                        json_data = json.loads(data.decode("utf-8"))
+                        logging.info(f"JSON Data from {client_ip}: {json_data}")
+                        # 日志记录 JSON 数据中的各个参数
+                        for key, value in json_data.get("params", {}).items():
+                            logging.info(f"{key}: {value}")
+                    except json.JSONDecodeError as e:
+                        logging.error(f"Failed to decode JSON data from {client_ip}: {e}")
 
             except asyncio.TimeoutError:
                 logging.warning(f"Connection from {client_ip} timed out after {DATA_TIMEOUT / 60} minutes of inactivity.")
