@@ -1,4 +1,4 @@
-# data_parser.py - 数据解析模块
+# data_parser.py - Data Parsing Module
 import struct
 import time
 import yaml
@@ -41,17 +41,17 @@ def parse_channel(byte_list, idx, device_channel_mapping, road_condition_mapping
             try:
                 value_dex = round(struct.unpack("!f", value_bytes)[0], 2)
             except struct.error as e:
-                logging.error(f"解包浮点数时出错: {e}")
+                logging.error(f"Error unpacking float: {e}")
                 value_dex = "InvalidFloat"
             idx += 4
 
         return idx, {field_name: value_dex}
 
     except Exception as e:
-        logging.error(f"解析通道数据时出错: {e}")
+        logging.error(f"Error parsing channel data: {e}")
         return idx, {}
 
-# 处理 UMB 数据
+# 处理并解析 UMB 数据
 def process_umb_data(data):
     try:
         byte_list = data.split()
@@ -71,5 +71,5 @@ def process_umb_data(data):
         return device_id, parsed_data
 
     except Exception as e:
-        logging.error(f"解析 UMB 数据时出错: {e}")
+        logging.error(f"Error parsing UMB data: {e}")
         return None
