@@ -5,6 +5,7 @@ from logging.handlers import RotatingFileHandler
 from data_parser import process_umb_data
 from crc_checksum import CRC16
 import json
+import yaml
 
 # 配置日志系统
 log_handler = RotatingFileHandler("./data/tcp_server.log", maxBytes=5*1024*1024, backupCount=5)
@@ -17,9 +18,27 @@ logging.basicConfig(
 
 DATA_TIMEOUT = 360  # 超时设置为6分钟
 
+# 加载配置文件
+def load_config():
+    try:
+        with open("config.yaml", "r") as file:
+            config = yaml.safe_load(file)
+            return config
+    except FileNotFoundError:
+        logging.critical("Configuration file not found. Please provide config.yaml.")
+        raise
+    except yaml.YAMLError as e:
+        logging.critical(f"Error parsing configuration file: {e}")
+        raise
+
+CONFIG = load_config()
+road_condition_mapping = CONFIG["road_condition_mapping"]
+channel_to_field = CONFIG["channel_to_field"]
+
 # 验证数据的CRC效验和
 def validate_crc(data):
-    """验证数据的CRC效验和。
+    """
+    验证数据的CRC效验和。
 
     参数:
         data (bytes): 需要验证的数据。
@@ -36,6 +55,35 @@ def validate_crc(data):
     # 比较计算出的效验和与接收到的效验和
     return received_crc == calculated_crc
 
+# 处理协议数据的函数定义
+def process_json_data(data):
+    """
+    处理 JSON 格式的数据。
+
+    参数:
+        data (bytes): 接收到的字节数据。
+
+    返回:
+        dict: 解析后的数据。
+    """
+    try:
+        json_data = json.loads(data.decode("utf-8"))
+        logging.info(f"Processed JSON Data: {json_data}")
+        return json_data
+    except json.JSONDecodeError as e:
+        logging.error(f"Failed to decode JSON data: {e}")
+        return None
+
+# 添加协议处理函数映射表
+def process_umb_data_wrapper(data):
+    return process_umb_data(data, channel_to_field, road_condition_mapping)
+
+PROTOCOL_HANDLERS = {
+    "UMB": process_umb_data_wrapper,
+    "JSON": process_json_data,
+    # 在此处可以添加更多协议处理函数
+}
+
 # 处理客户端连接
 async def handle_sensor_data(reader, writer):
     client_ip, client_port = writer.get_extra_info('peername')
@@ -48,6 +96,7 @@ async def handle_sensor_data(reader, writer):
     station_id = f"{project_code}{station_code}{station_number}"
     
     if not station_id or not protocol_type:
+        logging.warning(f"Invalid registration from {client_ip}, closing connection.")
         writer.close()
         await writer.wait_closed()
         return
@@ -63,24 +112,24 @@ async def handle_sensor_data(reader, writer):
                     logging.info(f"Connection closed by {client_ip}")
                     break
 
-                if protocol_type == "UMB":
-                    # CRC 校验
-                    if validate_crc(data):
-                        byte_list = ['{:02x}'.format(byte) for byte in data]
-                        vice_id, parsed_data = process_umb_data(" ".join(byte_list))
-                        logging.info(f"Device ID: {vice_id}, data: {parsed_data}")
+                # 通过协议类型找到对应的处理函数
+                handler = PROTOCOL_HANDLERS.get(protocol_type)
+                if handler:
+                    if protocol_type == "UMB":
+                        # CRC 校验
+                        if validate_crc(data):
+                            byte_list = ['{:02x}'.format(byte) for byte in data]
+                            vice_id, parsed_data = handler(" ".join(byte_list))
+                            logging.info(f"Device ID: {vice_id}, data: {parsed_data}")
+                        else:
+                            logging.warning(f"CRC validation failed for data from {client_ip}")
                     else:
-                        logging.warning(f"CRC validation failed for data from {client_ip}")
-                elif protocol_type == "JSON":
-                    # 处理 JSON 数据
-                    try:
-                        json_data = json.loads(data.decode("utf-8"))
-                        logging.info(f"JSON Data from {client_ip}: {json_data}")
-                        # 日志记录 JSON 数据中的各个参数
-                        for key, value in json_data.get("params", {}).items():
-                            logging.info(f"{key}: {value}")
-                    except json.JSONDecodeError as e:
-                        logging.error(f"Failed to decode JSON data from {client_ip}: {e}")
+                        # 处理其他协议的数据（例如 JSON）
+                        parsed_data = handler(data)
+                        if parsed_data:
+                            logging.info(f"Received JSON Data from {client_ip}: {data.decode('utf-8')}")
+                else:
+                    logging.error(f"Unsupported protocol type: {protocol_type} from {client_ip}")
 
             except asyncio.TimeoutError:
                 logging.warning(f"Connection from {client_ip} timed out after {DATA_TIMEOUT / 60} minutes of inactivity.")
